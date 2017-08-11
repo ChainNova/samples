@@ -12,14 +12,14 @@ import (
 type SimpleChaincode struct {
 }
 
-// Asset ...
+// Asset 资产
 type Asset struct {
 	Issuer string `json:"issuer"` //资产发行机构
 	Code   string `json:"code"`   //资产代码
 	Amount int64  `json:"amount"` //资产数量
 }
 
-// Account ...
+// Account 账户
 type Account struct {
 	AccountId string   `json:""accountId` //帐户id
 	Assets    []*Asset `json:"assets"`    //该帐户的资产列表
