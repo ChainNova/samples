@@ -29,6 +29,8 @@ type Account struct {
 func (c *SimpleChaincode) Init(stub shim.ChaincodeStubInterface) pb.Response {
 	fmt.Println("########### Init chaincode ###########")
 
+	// Init中可以加一些初始化操作，比如初始化一种资产
+
 	return shim.Success(nil)
 }
 
@@ -36,6 +38,7 @@ func (c *SimpleChaincode) Init(stub shim.ChaincodeStubInterface) pb.Response {
 func (c *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 	fmt.Println("########### Invoke chaincode ###########")
 	_, args := stub.GetFunctionAndParameters()
+	// 由于前面PPT中第一个参数总是“invoke”，真正的方法名是第二个参数。其实“invoke”不是必需的
 	function := args[0]
 
 	if function == "CreateAccount" {
@@ -51,6 +54,8 @@ func (c *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 	return shim.Error("Invalid invoke function name.")
 }
 
+// 创建账户
+// 参数：账户信息（ID）
 func (c *SimpleChaincode) createAccount(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	fmt.Println("=========== create account ==========")
 	if len(args) < 1 {
@@ -60,13 +65,14 @@ func (c *SimpleChaincode) createAccount(stub shim.ChaincodeStubInterface, args [
 	var prarm struct {
 		AccountId string `json:"accountId"` //帐户id
 	}
-
+	// 解析参数
 	err := json.Unmarshal([]byte(args[0]), &prarm)
 	if prarm.AccountId == "" || err != nil {
 		fmt.Println("create account arguments error: AccountId can't be nil.")
 		return shim.Error("create account arguments error: AccountId can't be nil.")
 	}
 
+	// 校验账户信息
 	_, _, isExist, err := c.checkAccout(stub, prarm.AccountId)
 	if err != nil {
 		e := fmt.Sprintf("Check account=%s error:%s", prarm.AccountId, err)
@@ -82,6 +88,7 @@ func (c *SimpleChaincode) createAccount(stub shim.ChaincodeStubInterface, args [
 		AccountId: prarm.AccountId,
 		Assets:    []*Asset{},
 	}
+	// 保存账户信息
 	err = c.save(stub, a.AccountId, a)
 	if err != nil {
 		e := fmt.Sprintf("save account=%+v error:%s", a, err)
@@ -92,6 +99,8 @@ func (c *SimpleChaincode) createAccount(stub shim.ChaincodeStubInterface, args [
 	return shim.Success(nil)
 }
 
+// 添加资产
+// 参数：添加资产信息
 func (c *SimpleChaincode) addAsset(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	fmt.Println("=========== addAsset asset ==========")
 	if len(args) < 2 {
@@ -103,12 +112,14 @@ func (c *SimpleChaincode) addAsset(stub shim.ChaincodeStubInterface, args []stri
 	var addAsset struct {
 		Asset *Asset `json:"asset"` //资产
 	}
+	// 解析参数
 	err := json.Unmarshal([]byte(args[1]), &addAsset)
 	if accountId == "" || addAsset.Asset.Issuer == "" || addAsset.Asset.Code == "" || err != nil || addAsset.Asset.Amount <= 0 {
 		fmt.Println("add asset arguments error: accountId, issuer and code can't be nil; amount must be a number and greater than 0.")
 		return shim.Error("add asset arguments error: accountId, issuer and code can't be nil; amount must be a number and greater than 0.")
 	}
 
+	// 获取并校验账户资产信息
 	_, account, isExist, err := c.checkAccout(stub, accountId)
 	if err != nil {
 		e := fmt.Sprintf("Check account=%s error:%s", accountId, err)
@@ -121,6 +132,9 @@ func (c *SimpleChaincode) addAsset(stub shim.ChaincodeStubInterface, args []stri
 	}
 
 	find := false
+	// 判断是否存在该资产
+	// 如果已有该资产，则数值增加
+	// 如果没有，则加入该资产
 	for k, v := range account.Assets {
 		if v.Issuer == addAsset.Asset.Issuer && v.Code == addAsset.Asset.Code {
 			account.Assets[k].Amount = v.Amount + addAsset.Asset.Amount
@@ -132,6 +146,7 @@ func (c *SimpleChaincode) addAsset(stub shim.ChaincodeStubInterface, args []stri
 		account.Assets = append(account.Assets, addAsset.Asset)
 	}
 
+	// 保存账户资产
 	err = c.save(stub, account.AccountId, account)
 	if err != nil {
 		e := fmt.Sprintf("save account=%+v error:%s", account, err)
@@ -142,6 +157,9 @@ func (c *SimpleChaincode) addAsset(stub shim.ChaincodeStubInterface, args []stri
 	return shim.Success(nil)
 }
 
+// 转移资产
+// 参数：账户ID
+//		转移资产信息（包括接收账户）
 func (c *SimpleChaincode) transferAsset(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	fmt.Println("=========== transferAsset ==========")
 	if len(args) < 2 {
@@ -153,12 +171,14 @@ func (c *SimpleChaincode) transferAsset(stub shim.ChaincodeStubInterface, args [
 		AccountId string `json:"accountId"` //转移目的帐号
 		Asset     *Asset `json:"asset"`     //欲转移的资产
 	}
+	// 解析参数
 	err := json.Unmarshal([]byte(args[1]), &transferAsset)
 	if fromID == "" || transferAsset.AccountId == "" || transferAsset.Asset.Issuer == "" || transferAsset.Asset.Code == "" || err != nil || transferAsset.Asset.Amount <= 0 {
 		fmt.Println("transfer asset arguments error: account, issuer and code can't be nil; amount must be a number and greater than 0.")
 		return shim.Error("transfer asset arguments error: account, issuer and code can't be nil; amount must be a number and greater than 0.")
 	}
 
+	// 获取并校验账户信息
 	_, accountF, isExist, err := c.checkAccout(stub, fromID)
 	if err != nil {
 		e := fmt.Sprintf("Check account=%s error:%s", fromID, err)
@@ -170,6 +190,7 @@ func (c *SimpleChaincode) transferAsset(stub shim.ChaincodeStubInterface, args [
 		return shim.Error(e)
 	}
 
+	// 获取并校验接收账户信息
 	_, accountT, isExist, err := c.checkAccout(stub, transferAsset.AccountId)
 	if err != nil {
 		e := fmt.Sprintf("Check account=%s error:%s", transferAsset.AccountId, err)
@@ -182,6 +203,9 @@ func (c *SimpleChaincode) transferAsset(stub shim.ChaincodeStubInterface, args [
 	}
 
 	find := false
+	// 检测账户资产
+	// 如果存在，则减去转移量（必须确保转移量小于账户对应资产数量）
+	// 如果不存在，则返回错误
 	for k, v := range accountF.Assets {
 		if v.Issuer == transferAsset.Asset.Issuer && v.Code == transferAsset.Asset.Code {
 			if v.Amount < transferAsset.Asset.Amount {
@@ -200,6 +224,9 @@ func (c *SimpleChaincode) transferAsset(stub shim.ChaincodeStubInterface, args [
 	}
 
 	find = false
+	// 判断接收账户资产
+	// 如果存在该资产，则数量增加
+	// 如果不存在该资产，则新增该资产
 	for k, v := range accountT.Assets {
 		if v.Issuer == transferAsset.Asset.Issuer && v.Code == transferAsset.Asset.Code {
 			accountF.Assets[k].Amount = v.Amount + transferAsset.Asset.Amount
@@ -210,6 +237,7 @@ func (c *SimpleChaincode) transferAsset(stub shim.ChaincodeStubInterface, args [
 		accountT.Assets = append(accountT.Assets, transferAsset.Asset)
 	}
 
+	// 保存账户信息
 	err = c.save(stub, accountF.AccountId, accountF)
 	if err != nil {
 		e := fmt.Sprintf("save account=%+v error:%s", accountF, err)
@@ -217,6 +245,7 @@ func (c *SimpleChaincode) transferAsset(stub shim.ChaincodeStubInterface, args [
 		return shim.Error(e)
 	}
 
+	// 保存接收账户信息
 	err = c.save(stub, accountT.AccountId, accountT)
 	if err != nil {
 		e := fmt.Sprintf("save account=%+v error:%s", accountT, err)
@@ -226,6 +255,8 @@ func (c *SimpleChaincode) transferAsset(stub shim.ChaincodeStubInterface, args [
 	return shim.Success(nil)
 }
 
+// 获取用户信息
+// 参数：查询账户信息
 func (c *SimpleChaincode) getAccount(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	fmt.Println("=========== getAccount ==========")
 	if len(args) < 1 {
@@ -235,13 +266,14 @@ func (c *SimpleChaincode) getAccount(stub shim.ChaincodeStubInterface, args []st
 	var prarm struct {
 		AccountId string `json:"accountId"` //帐户id
 	}
-
+	// 解析参数
 	err := json.Unmarshal([]byte(args[0]), &prarm)
 	if prarm.AccountId == "" || err != nil {
 		fmt.Println("create account arguments error: AccountId can't be nil.")
 		return shim.Error("create account arguments error: AccountId can't be nil.")
 	}
 
+	// 获取账户信息
 	b, _, isExist, err := c.checkAccout(stub, prarm.AccountId)
 	if err != nil {
 		e := fmt.Sprintf("Check account=%s error:%s", prarm.AccountId, err)
@@ -256,6 +288,7 @@ func (c *SimpleChaincode) getAccount(stub shim.ChaincodeStubInterface, args []st
 	return shim.Success(b)
 }
 
+// 获取账户信息，并判断是否存在
 func (c *SimpleChaincode) checkAccout(stub shim.ChaincodeStubInterface, id string) (b []byte, a Account, isExist bool, err error) {
 
 	b, err = stub.GetState(id)
@@ -269,6 +302,7 @@ func (c *SimpleChaincode) checkAccout(stub shim.ChaincodeStubInterface, id strin
 	return b, a, a.AccountId != "", err
 }
 
+// 保存state
 func (c *SimpleChaincode) save(stub shim.ChaincodeStubInterface, k string, v interface{}) error {
 	val, err := json.Marshal(v)
 	if err != nil {
